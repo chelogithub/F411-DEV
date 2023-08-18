@@ -7,5 +7,7 @@ Drivers
 Debug
 Middlewares
 *.s
+*.prefs
+*.xml
 
 
