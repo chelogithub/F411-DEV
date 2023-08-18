@@ -1,6 +1,7 @@
 # Prerequisites
 *.launch
 *.ld
+.settings
 Binaries
 Includes
 Drivers
@@ -9,5 +10,8 @@ Middlewares
 *.s
 *.prefs
 *.xml
+*.cproject
+*.mxproject
+*.project
 
 
