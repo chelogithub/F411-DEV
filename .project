@@ -31,6 +31,21 @@
 	</natures>
 	<linkedResources>
 		<link>
+			<name>ESP8266</name>
+			<type>2</type>
+			<location>C:/STM32-IDE/STM32-LIBRARY/ESP8266</location>
+		</link>
+		<link>
+			<name>HTTP</name>
+			<type>2</type>
+			<location>C:/STM32-IDE/STM32-LIBRARY/HTTP</location>
+		</link>
+		<link>
+			<name>LoRa</name>
+			<type>2</type>
+			<location>C:/STM32-IDE/STM32-LIBRARY/LoRa</location>
+		</link>
+		<link>
 			<name>ModBUS</name>
 			<type>2</type>
 			<location>C:/STM32-IDE/STM32-LIBRARY/ModBUS</location>

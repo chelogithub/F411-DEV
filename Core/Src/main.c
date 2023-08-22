@@ -15,18 +15,20 @@
   *
   ******************************************************************************
   */
-/* USER CODE END Header */ //GIT2
+/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-
+#include "ESP8266_Chelo.h"
+#include "ModBUS_Chelo.h"
 #include "STR_Chelo.h"
 #include "ETH_W5500.h"
 #include "string.h"
 #include "stdio.h"
+#include "http.h"
 
 /* USER CODE END Includes */
 
@@ -51,12 +53,19 @@
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
-TIM_HandleTypeDef htim3;
+
+UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 uint32_t ms_ticks=0,
 		 min_ticks=0;
 
+struct W5500_SPI ETH; 		// Instancia de la comunicación Ethernet
+struct W5500_SPY ETH_SPY; 	// Instancia de la comunicación Ethernet
+struct WIFI wf;				// Instancia WiFi
+struct MBUS mb_eth;			// Instancia Ethernet
+struct MBUS mb_wf;			// Instancia Wi-Fi
+//struct LoRa lr;				// Instancia LoRa
 uint8_t error=0;
 
 char post[512];
@@ -69,10 +78,9 @@ uint8_t ETH_DBG_EN=1;
 uint8_t WF_SND_FLAG=0;
 int wf_snd_flag_ticks=0;
 
-uint32_t REG[254];		//Registros para ver ModBUS
+uint32_t REG[254];			//Registros para ver ModBUS
 
-struct W5500_SPI ETH; // Instancia de la comunicación Ethernet
-struct W5500_SPY ETH_SPY; // Instancia de la comunicación Ethernet
+
 // ****** Begin Firmware Registers ****** //
 
 uint16_t W5500_socket0_STATUS ;
@@ -134,7 +142,7 @@ char	UART_RX_vect[512],
 		WIFI_PASS[]="12345678",//WIFI_PASS[]="0042880756",//WIFI_PASS[]="12345678",//
 		TCP_SERVER[]="192.168.0.91",//TCP_SERVER[]="192.168.0.65",//TCP_SERVER[]="192.168.0.102",//TCP_SERVER[]="192.168.0.47",
 		TCP_PORT[]="8000",//TCP_PORT[]="502",
-		TCP_SERVER_LOCAL[]="192.168.0.34",//TCP_SERVER_LOCAL[]="192.168.0.33",//TCP_SERVER[]="192.168.0.47",
+		TCP_SERVER_LOCAL[]="192.168.0.43",//TCP_SERVER_LOCAL[]="192.168.0.33",//TCP_SERVER[]="192.168.0.47",
 		TCP_SERVER_LOCAL_GWY[]="192.168.0.99",//TCP_SERVER[]="192.168.0.47",
 		TCP_SERVER_LOCAL_MSK[]="255.255.255.0",//TCP_SERVER[]="192.168.0.47",
 		TCP_PORT_LOCAL[]="502",
@@ -182,9 +190,12 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
-static void MX_TIM3_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t ESP8266_HW_Init(UART_HandleTypeDef *);
+void ESP8266_HW_Reset(void);
+void Actualizar_RXdata(int );
+void BorrarVect(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -200,7 +211,6 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	//----------------------- ETHERNET W5500 Environment-------------------------//
-
 	//	GATEWAY ADDRESS
 		ETH.GAR[0]=192;
 		ETH.GAR[1]=168;
@@ -259,13 +269,6 @@ int main(void)
 
 		ETH.S_ENserver = 0;			//Actúa como servidor S0_ENserver=1 o cliente S0_ENserver=0
 
-		//----------------------- ETHERNET W5500 Environment-------------------------//
-	  //----------------------- LoRa ------------------------//
-
-	  //----------------------- LoRa ------------------------//
-
-	  //----------------------- WIFI ------------------------//
-
 		spi_no_debug=1;
 		ETH.NSS_PORT=GPIOA;
 		ETH.NSS_PIN=GPIO_PIN_4;
@@ -273,15 +276,56 @@ int main(void)
 		ETH.RST_PIN=GPIO_PIN_0;
 		ETH.SPI= &hspi1;
 
+		//----------------------- ETHERNET W5500 Environment-------------------------//
+	  //----------------------- LoRa ------------------------//
+
+	  //----------------------- LoRa ------------------------//
+
+	  //----------------------- WIFI ------------------------//
+ 	  	Inicializar(&wf); 									//Borra todos los registros de la estructura
+		strcpy(wf._WF_Net, WIFI_NET);						//Nombre de la red WIFI  a conectar Fibertel WiFi967 2.4GHz
+		strcpy(wf._WF_Pass, WIFI_PASS);						//Password de la red WIFI
+		strcpy(wf._TCP_Remote_Server_IP, TCP_SERVER);		//char _TCP_Remote_Server_IP[16];		//IP del Servidor TCP
+		strcpy(wf._TCP_Remote_Server_Port, TCP_PORT);		//char _TCP_Remote_Server_Port[16];			//Puerto del Servidor TCP
+		strcpy(wf._TCP_Local_Server_IP, TCP_SERVER_LOCAL);
+		strcpy(wf._TCP_Local_Server_GWY, TCP_SERVER_LOCAL_GWY);
+		strcpy(wf._TCP_Local_Server_MSK, TCP_SERVER_LOCAL_MSK);
+		strcpy(wf._TCP_Local_Server_Port, TCP_PORT_LOCAL);
+		wf._TCP_Local_Server_EN=0;							//Habilito el Servidor Local
+		wf._data2SND[0]=0x00;//strcpy(wf._data2SND,"01;03;00;00;00;0A;C5;CD");//strcpy(wf._data2SND,"20;352;52#");
+		wf._data2SND[1]=0x00;
+		wf._data2SND[2]=0x00;
+		wf._data2SND[3]=0x00;
+		wf._data2SND[4]=0x00;
+		wf._data2SND[5]=0x06;
+		wf._data2SND[6]=0x01;
+		wf._data2SND[7]=0x03;
+		wf._data2SND[8]=0x00;//strcpy(wf._data2SND,"01;03;00;00;00;0A;C5;CD");//strcpy(wf._data2SND,"20;352;52#");
+		wf._data2SND[9]=0x00;
+		wf._data2SND[10]=0x00;
+		wf._data2SND[11]=0x0A;
+		wf._data2SND[12]=0x00;
+		wf._data2SND[13]=0x33;
+		wf._data2SND[14]=0x34;
+		wf._data2SND[15]=0x35;
+		wf._n_D2SND=12;
+		wf._estado_conexion=100;//Si no se define no arranca	//wf._estado_conexion=1;					//Arranco en WiFi Desconectado
+		wf._automatizacion=WF_CONNECT_TCP;//wf._automatizacion=WF_SEND;
+		wf._DBG_EN=1;
+
+
+
 		// ----------- FIN - Seteo de módulo Ethernet W5500 ----------- //
 
 
 	 //----------------------- WIFI ------------------------//
 
 	 //---------------------- ModBUS -----------------------//
-
-
-
+		ModBUS_Config(&mb_eth);		//ETHERNET como cliente TCP envía  ModBUS
+		mb_eth._mode = CLIENTE;
+		ModBUS_Config(&mb_wf);		//WIFI como servidor TCP, recibe comadno ModBUS
+		mb_wf._mode = CLIENTE;
+		ModBUS_F03_Assign(&mb_wf,3,0xAA55);
 	 //---------------------- ModBUS -----------------------//
   /* USER CODE END 1 */
 
@@ -305,11 +349,15 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
-  MX_TIM3_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, 0);
   ITM0_Write("\r\n INICIO OK\r\n",strlen("\r\n INICIO OK\r\n"));
+	  ESP8266_HW_Reset();	//WRNNG Hardcoded	  //Reseteo el modulo desde el pin de RESET
+	  if (wf._DBG_EN) ITM0_Write("\r\n RESET ESP8266 \r\n",strlen("\r\n RESET ESP8266 \r\n"));
+	  //HAL_TIM_Base_Start(&htim6); //Timer como base de tiempo
+	  HAL_UART_Receive_IT(&huart1,(uint8_t *)UART_RX_byte,1);
 
      if (ETH_DBG_EN)ITM0_Write("\r\n SET-UP W5500 \r\n",strlen("\r\n SET-UP W5500 \r\n"));
 
@@ -330,7 +378,6 @@ int main(void)
 	 eth_wr_SOCKET_MODE(&ETH,S0_REG,MODE_TCP);
    	 SPI_ETH_REG(&ETH, S_DIPR, S0_REG,SPI_WRITE, ETH.S_DIPR,4);									// client
    	 ITM0_Write("\r\nETH-W5500-SOCK0 TCP REMOTE PORT TO CONNECT\r\n",strlen("\r\nETH-W5500-SOCK0 TCP REMOTE PORT TO CONNECT\r\n"));									// client
-
    	 SPI_ETH_REG(&ETH, S_DPORT, S0_REG,SPI_WRITE, ETH.S_DPORT,2);									// client
    	 ITM0_Write("\r\nETH-W5500-SOCK0 TCP PORT SET\r\n",strlen("\r\nETH-W5500-SOCK0 TCP PORT SET\r\n"));						//same for server and client
 
@@ -343,8 +390,29 @@ int main(void)
    	 SPI_ETH_SNIFF(&ETH_SPY, &ETH);
 
 	 //SPI_READ_EN=1;
+   	 //------------------------ RUN ESP -----------------------------------//
+     if(ESP8266_HW_Init(&huart1)==1)
+     {
+   	  ESP_HW_Init=1;
+   	  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+     }
+     else
+     {
+   	  ESP8266_HW_Reset(); //WRNNG Hardcoded
+   	  if(ESP8266_HW_Init(&huart1)==1)
+   	  {
+   		  ESP_HW_Init=1;
+   		  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+   	  }
+   	  else
+   	  {
+   		  ESP_HW_Init=0;
+   		  if (wf._DBG_EN)  ITM0_Write("\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"));
+   	  }
+     }
+     //------------------------ RUN ESP -----------------------------------//
 
-
+     HAL_Delay(1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -363,11 +431,184 @@ int main(void)
 	 	 eth_wr_SOCKET_CMD(&ETH,0, CONNECT);																				//only for server
 		 ITM0_Write("\r\nETH-W5500-CONNECT\r\n",strlen("\r\nETH-W5500-CONNECT\r\n"));*/
 		 SPI_READ_EN=1;
+		  //----------------INSTRUCCIONS POR PUERTO SERIE---------------------
+
+		  //----------------INSTRUCCIONS POR PUERTO SERIE---------------------
+
+		  /**************[ INICIO PIDO ENVIAR DATOS ]**************/
 
 
 
 
-  }
+
+		  	  if (ESP_HW_Init==1)
+		  	  {
+		  			if((WF_SND_FLAG==1)&&(wf._TCP_Local_Server_EN==0)&&(wf._estado_conexion>=609)&&(ETH.S_data_available))
+		  			{	ETH.S_data_available=0;
+		  				wf_snd_flag_ticks=0;
+		  				WF_SND_FLAG=0;
+		  				/*ModBUS_F03_Request(&mb_wf, 0 , 10);
+		  				ModBUS(&mb_wf);							// Create ModBUS info to be sent
+		  				CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
+		  				wf._n_D2SND=mb_wf._n_MBUS_2SND;*/
+
+		  				if( httpPOST(	ENDPOINT, SERVER_IP,PORT,
+		  								ModBUS_F03_Read(&mb_eth,0),
+		  								ModBUS_F03_Read(&mb_eth,1),
+		  								ModBUS_F03_Read(&mb_eth,2),
+		  								ModBUS_F03_Read(&mb_eth,3),
+		  								ModBUS_F03_Read(&mb_eth,4),
+		  								ModBUS_F03_Read(&mb_eth,5),
+		  								ModBUS_F03_Read(&mb_eth,6),
+		  								ModBUS_F03_Read(&mb_eth,7),
+		  								ModBUS_F03_Read(&mb_eth,8),
+										ModBUS_F03_Read(&mb_eth,9),TEST_2,//ModBUS_F03_Read(&mb_eth,9),TEPELCO,
+		  								post, body, 512))
+
+		  				{
+		  							CopiaVector(wf._data2SND,post,strlen(post),0,'A');
+		  							wf._n_D2SND=strlen(post);
+		  							if(wf._automatizacion < WF_SEND)		// Send only with automation sent diasabled
+		  							{
+		  								EnviarDatos(&wf);
+		  								wf._estado_conexion=TCP_SND_EN_CURSO;
+		  							}
+		  				}
+		  			}
+		  	  }
+		  /**************[ FIN PIDO ENVIAR DATOS ]**************/
+
+		  		if ((FLAG_UART1==1)||(FLAG_TIMEOUT==1))  //Si recibí datos o me fui por TimeOUT
+		  		{
+		  			if(FLAG_UART1==1)
+		  				{
+		  					CopiaVector(wf._uartRCVD,UART_RX_vect_hld,UART_RX_items,1,CMP_VECT);
+		  					FLAG_UART1=0;
+
+		  						if (error_rxdata==3)
+		  						{
+		  							error_rxdata=0;
+		  						}
+		  						if (error_rxdata==1)
+		  						{
+		  							error_rxdata=5;
+		  							error_rxdata=0;
+		  						}
+		  				}
+		  			if(FLAG_TIMEOUT==1)
+		  					{
+		  						FLAG_TIMEOUT=0;
+		  					}
+
+		  			if (ESP_HW_Init==1) //Si el módulo se inició correctamente
+		  				{
+		  					/*************** Copio y proceso info recibida ***************/
+		  					wf._n_orig=UART_RX_items;
+		  					CopiaVector(wf._uartRCVD,UART_RX_vect_hld,UART_RX_items,1,CMP_VECT);
+		  					resultado=AT_ESP8266_ND(&wf);
+
+		  					/*************** Si recibo datos y estan correctos me fijo que son ***************/
+
+		  					if ((wf._new_data_rcv==1)&&(wf._estado_rcv_data==99))
+		  					{
+
+		  						CopiaVector(mb_wf._MBUS_RCVD,wf._dataRCV,wf._n_dataRCV,0,'A');
+		  						mb_wf._n_MBUS_RCVD=wf._n_dataRCV;
+
+		  						ModBUS(&mb_wf);
+
+		  						CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
+		  						wf._n_D2SND=mb_wf._n_MBUS_2SND;
+		  						wf._new_data_rcv=0;//
+		  						wf._send_data=1;
+		  					}else
+		  						{
+		  							// DATA ERRONEA NO SE PROCESA
+		  						}
+		  					}
+
+		  		}
+	// AGREGAR TIMER EN MS TICKS PARA HABILITAR ESTADO Y CUENTA TODOS EN EL STRUCT
+		  		/*if((FLAG_UART2 == 1)||(lr.tmr_dly_ON==1))  //Evento de dato recibido LoRA debo verificar que es
+		  		{
+		  			if(FLAG_UART2==1)
+		  				{
+		  				FLAG_UART2=0;
+		  				LoRa_decode(&lr);
+		  				}
+
+		  			if(lr.tmr_dly_ON==1)
+		  				{
+		  					lr.tmr_dly_ON=0;
+		  					LoRa_reset_sndTIMER(&lr,3000);
+							lr.dest_address[0]='\0';
+							lr.txbuff[0]='\0';
+				  			strncat(lr.dest_address,"1",1);
+				  			strncat(lr.txbuff,"prueba de envio de mensaje de texto",strlen("prueba de envio de mensaje de texto"));
+				  			lr.txitems=strlen("prueba de envio de mensaje de texto");
+			  				lr.estado=_SENT;										//
+				  			error=LoRa_Send(&lr,&huart2);
+		  				}*/
+
+		  /*			if((lr.rxbuff[0]=='+')&&
+		  			   (lr.rxbuff[1]=='R')&&
+					   (lr.rxbuff[2]=='C')&&
+					   (lr.rxbuff[3]=='V'))
+					   {
+		  				lr.estado=RECIBIDO;
+		  				//LoRa_decodeRCV(&lr);
+		  				LoRa_set_sndTIMER(&lr);
+		  				lr.rxbuff[0]='\0';
+					   }
+
+		  			if((lr.rxbuff[0]=='+')&&
+		  			   (lr.rxbuff[1]=='E')&&
+					   (lr.rxbuff[2]=='R')&&
+					   (lr.rxbuff[3]=='R'))
+					   {
+		  				lr.rxbuff[0]='\0';
+					   }
+		  			if((lr.rxbuff[0]=='+')&&
+		  			   (lr.rxbuff[1]=='O')&&
+					   (lr.rxbuff[2]=='K'))
+					   {
+							ITM0_Write("Recibido +OK",strlen("Recibido +OK"));
+							lr.estado=ENVIADO;										//change state to ENVIADO
+							lr.rxbuff[0]='\0';									//Clean rxbuff_hld
+					   }*/
+
+		  			//CopiaVector(lr.txbuff,mb_eth._MBUS_RCVD,mb_eth._n_MBUS_RCVD,0,'A');
+
+		  			//lr.txbuff[0]='H';lr.txbuff[1]='O';lr.txbuff[2]='L';lr.txbuff[3]='A';
+		  			//lr.txitems=4;
+
+		  			//lr.txitems=mb_eth._n_MBUS_RCVD;
+		  			//ITM0_Write(lr.txbuff,strlen(lr.txbuff))
+
+
+		  		//}
+
+		  		if (ESP_HW_Init==1) //Si el módulo se inició correctamente
+		  			{
+		  				conexion=WiFi_Conn_ND(&wf,&huart1,1);	//Tiene que ir en el main el chequeo es constante
+		  			}
+		  		if (esp_restart==1) //WRNNG Hardcoded RESET WIFI
+		  			{
+		  				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+		  				ITM0_Write("\r\n ESP HW Resetting\r\n",strlen("\r\n ESP HW Resetting\r\n"));
+		  				HAL_Delay(2000);//210419
+		  				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
+		  				ITM0_Write("\r\n ESP WAIT 5s AFT RST\r\n",strlen("\r\n ESP WAIT 5s AFT RST\r\n"));
+		  				HAL_Delay(5000);//210419
+		  				esp_restart=0;
+		  			}
+
+		    //}//2
+	  }
+
+
+
+
   /* USER CODE END 3 */
 }
 
@@ -517,64 +758,35 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief TIM3 Initialization Function
+  * @brief USART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_TIM3_Init(void)
+static void MX_USART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN TIM3_Init 0 */
+  /* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE END TIM3_Init 0 */
+  /* USER CODE END USART1_Init 0 */
 
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
+  /* USER CODE BEGIN USART1_Init 1 */
 
-  /* USER CODE BEGIN TIM3_Init 1 */
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
 
-  /* USER CODE END TIM3_Init 1 */
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 100;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 150;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_OnePulse_Init(&htim3, TIM_OPMODE_SINGLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_INACTIVE;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM3_Init 2 */
-
-  /* USER CODE END TIM3_Init 2 */
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -655,21 +867,36 @@ void SysTick_Handler(void)
 	ms_ticks++;	//100 ms
 
 	ESP_ticks++;
-
+	if(mb_eth._w_answer) MB_TOUT_ticks++;
+	if ( mb_eth._w_answer && (mb_eth._timeout < MB_TOUT_ticks))
+		{
+			mb_eth._w_answer=0;
+			MB_TOUT_ticks=0;
+		}
 
 // ENVIO DATOS LoRa ---------------------------------------------------------------//
 
-
+/*	if(lr.tmr_dly_en==1)
+	{
+		lr.tmr_dlyCNT++;
+		if(lr.tmr_dlyCNT > lr.tmr_dly)
+		{
+			lr.tmr_dly_ON=1;
+			lr.tmr_dly_en=0;
+		}
+	}*/
 // ENVIO DATOS LoRa ---------------------------------------------------------------//
 // ENVIO DATOS WF ---------------------------------------------------------------//
 
+	if((wf._estado_conexion==609 || wf._estado_conexion==700)&&(wf._TCP_Local_Server_EN==0))  wf_snd_flag_ticks++;
 
+	if(wf_snd_flag_ticks>= 20000 && wf._ejecucion!=1 && wf._TCP_Local_Server_EN==0)		 	  WF_SND_FLAG=1;					//230517 wf_snd_flag_ticks>= 2000
 
 // ENVIO DATOS WF ----------------------------------- ---------------------------//
 
 /**********************[ INICIO - EHTERNET WDG ] **********************/
 
-	if((ETH.S_status == 0))
+	if(ETH.S_status == 0)
 	{
 		ETH.ETH_WDG++;
 		if (ETH.ETH_WDG>=64000)
@@ -767,18 +994,18 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 						S0_get_size = SPI_ETH_REG(&ETH, S_RX_RSR ,S0_REG, SPI_READ, spi_Data,2);//S0_get_size = SPI_ETH_REG(&ETH, S_RX_SZ_ADDR_BASEHH,S_RX_SZ_ADDR_BASEHL ,SPI_READ, spi_Data,2);
 							if(S0_get_size != 0x00)
 							{
-								eth_rd_SOCKET_DATA(&ETH,0,&rx_mem_pointer,S0_get_size); // read socket data
-								SPI_ETH_WR_REG_16(&ETH,S_RX_RD0,rx_mem_pointer,0 );		// write rx memory pointer
-								eth_wr_SOCKET_CMD(&ETH,0,RECV);							// write command to execute
-								while(eth_rd_SOCKET_CMD(&ETH,0))						// wait until end of command execution
+								eth_rd_SOCKET_DATA(&ETH,S0_RX_BUFF,&rx_mem_pointer,S0_get_size); // read socket data
+								SPI_ETH_WR_REG_16(&ETH,S_RX_RD0,rx_mem_pointer,S0_REG );		// write rx memory pointer
+								eth_wr_SOCKET_CMD(&ETH,S0_REG,RECV);							// write command to execute
+								while(eth_rd_SOCKET_CMD(&ETH,S0_REG))						// wait until end of command execution
 								{}
 
-								//CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, 0 );
-								//mb_eth._n_MBUS_RCVD=S0_get_size;
+								CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, 0 );
+								mb_eth._n_MBUS_RCVD=S0_get_size;
 
 								if(S0_get_size > 0)	{ ETH.S_data_available=1;}					//Flag data received
 
-								/*if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
+								if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
 								{
 									ModBUS(&mb_eth);										//ModBUS protocol execution
 									CopiaVector(ETH.data, mb_eth._MBUS_2SND, mb_eth._n_MBUS_2SND, 0, 0);
@@ -786,15 +1013,15 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 								else
 								{
 									if (ETH_DBG_EN) ITM0_Write("\r\n NO MBUS \r\n",strlen("\r\n\r\n NO MBUS \r\n\r\n"));
-								}*/
+								}
 
-								//send_size=mb_eth._n_MBUS_2SND;  //ModBUS data qty
+								send_size=mb_eth._n_MBUS_2SND;  //ModBUS data qty
 
-								eth_wr_SOCKET_DATA(&ETH,0, &tx_mem_pointer, send_size);	// write socket data
+								eth_wr_SOCKET_DATA(&ETH,S0_RX_BUFF, &tx_mem_pointer, send_size);	// write socket data
 
-								SPI_ETH_WR_REG_16(&ETH,S_TX_WR,tx_mem_pointer,0);			// write tx memory pointer//SPI_ETH_WR_REG_16(&ETH,0x424,tx_mem_pointer,0);			// write tx memory pointer
-								eth_wr_SOCKET_CMD(&ETH,0,SEND);							// write command to execute
-								while(eth_rd_SOCKET_CMD(&ETH,0))						// wait until end of command execution
+								SPI_ETH_WR_REG_16(&ETH,S_TX_WR,tx_mem_pointer,S0_REG);			// write tx memory pointer//SPI_ETH_WR_REG_16(&ETH,0x424,tx_mem_pointer,0);			// write tx memory pointer
+								eth_wr_SOCKET_CMD(&ETH,S0_REG,SEND);							// write command to execute
+								while(eth_rd_SOCKET_CMD(&ETH,S0_REG))						// wait until end of command execution
 								{}
 
 							}
@@ -802,7 +1029,7 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 					else	// Puerto ethernet labura como esclavo, se conecta al server para pedir datos
 					{
 
-						if (_w_answer==0)
+						if (mb_eth._w_answer==0)
 						{
 							//Si ya envié vuelvo a enviar
 
@@ -820,10 +1047,9 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 							ETH.data[11]=0x0A;
 							send_size=12;
 
-							//ModBUS_F03_Request(&mb_eth,0,15);
-							//CopiaVector(ETH.data, mb_eth._MBUS_2SND, 12, 0, 0 );
-							/*S0_REG		= 0x01,
-							S0_TX_BUFF	= 0x02,*/
+							ModBUS_F03_Request(&mb_eth,0,15);
+							CopiaVector(ETH.data, mb_eth._MBUS_2SND, 12, 0, 0 );
+
 
 							eth_wr_SOCKET_DATA(&ETH,S0_TX_BUFF, &tx_mem_pointer, send_size);	// write socket data
 						   	 SPI_ETH_SNIFF(&ETH_SPY, &ETH);
@@ -837,14 +1063,14 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 								read=SPI_ETH_REG(&ETH, S_IR,S0_REG,SPI_READ, ETH.GAR,1);
 							//}
 
-							_w_answer=1;	// Waiting answer flag
+							mb_eth._w_answer=1;	// Waiting answer flag_w_answer=1;	// Waiting answer flag
 							MB_TOUT_ticks=0;	// restart counting
 							if (ETH_DBG_EN) ITM0_Write("\r\n SENT MBUS REQ \r\n",strlen("\r\n\r\n SENT MBUS REQ \r\n\r\n"));
 						}
 						else
 						{
 						S0_get_size = SPI_ETH_REG(&ETH, S_RX_RSR ,S0_REG ,SPI_READ, spi_Data,2);
-						_w_answer=0;	// Waiting answer flag
+						//_w_answer=0;	// Waiting answer flag
 						if(S0_get_size != 0x00)
 							{
 								eth_rd_SOCKET_DATA(&ETH,S0_RX_BUFF,&rx_mem_pointer,S0_get_size); // read socket data
@@ -853,21 +1079,21 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 								/*while(eth_rd_SOCKET_CMD(&ETH,S0_REG))						// wait until end of command execution
 								{}*/
 								if (ETH_DBG_EN) ITM0_Write("\r\n RCVD DATA \r\n",strlen("\r\n RCVD DATA \r\n"));
-								//CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, 0 );
-								//mb_eth._n_MBUS_RCVD=S0_get_size;
+								CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, 0 );
+								mb_eth._n_MBUS_RCVD=S0_get_size;
 
 								if(S0_get_size > 0)	{ ETH.S_data_available=1;}
 
-								/*if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
+								if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
 									{
 										mb_eth._w_answer=0;  									//Si el mensaje recibido ya es modbus digo que ya recibi
 										MB_TOUT_ticks=0;
 										ModBUS(&mb_eth);										//ModBUS protocol execution
 										//CopiaVector(ETH.data, mb_eth._MBUS_2SND, mb_eth._n_MBUS_2SND, 0, 0);
 										CopiaVector(ETH.swap, mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD, 0, 0);
-										//CopiaVector(mb_wf._Holding_Registers, mb_eth._Holding_Registers, 64, 0, 0);
+										CopiaVector(mb_wf._Holding_Registers, mb_eth._Holding_Registers, 64, 0, 0);
 										if (ETH_DBG_EN) ITM0_Write("\r\n RCVD MBUS REQ \r\n",strlen("\r\n\r\n RCVD MBUS REQ \r\n\r\n"));
-									}*/
+									}
 									else
 										{
 										if (ETH_DBG_EN) ITM0_Write("\r\n NO MBUS \r\n",strlen("\r\n\r\n NO MBUS \r\n\r\n"));
@@ -958,15 +1184,258 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 		  }
   }
 
+if(EN_USART1_TMR==1) USART1_ticks++;
 
+if(USART1_ticks>=2)//if(USART1_ticks>=10)
+{
+	USART1_ticks=0;
+	FLAG_USART1=1;
+	EN_USART1_TMR=0;
+	items_rx=uart1pass;
+	uart1pass=0;
+}
 
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
+	if(wf._estado_conexion==4)//if((wf._estado_conexion!=1)&&(wf._estado_conexion!=2)&&(resultado!=20)&&(resultado!=24)) //Solo cuento cuando no estahaciendo otra cosa
+	{
+		ticks++;
+	}
+	else
+	{
+		ticks=0;
+	}
 
+	if(wf._ejecucion==1)
+		{
+			if (FLAG_TIMEOUT!=1)
+			{
+				if(wf._instruccion!=2) wf._ticks++;//-----------------------Solo cuento una vez reconcido el timeout, cuando entro al timeout no cuento
+				if(wf._instruccion==2) wf._ticks2++;
+			}
+
+
+			if ((wf._instruccion!=2)&&(wf._ticks > 5500)) //if (wf._ticks > 5000)
+			{
+				FLAG_TIMEOUT=1;
+				if(huart1.Instance->CR1 == 0x200C)  //--------------------Evito error UART colgado
+				{
+					HAL_UART_Receive_IT(&huart1,(uint8_t *)UART_RX_byte,1);
+					EN_UART1_TMR=0; //OBS-VER Para que me vuelva a habilitar el timer
+				}
+				//wf._ticks=0;
+			}
+			if ((wf._instruccion==2)&&(wf._ticks2 > 20500)) //if (wf._ticks > 5000)
+			{
+				FLAG_TIMEOUT=1;
+				if(huart1.Instance->CR1 == 0x200C)  //--------------------Evito error UART colgado
+				{
+					HAL_UART_Receive_IT(&huart1,(uint8_t *)UART_RX_byte,1);
+					EN_UART1_TMR=0; //OBS-VER Para que me vuelva a habilitar el timer
+				}
+				//wf._ticks=0;
+			}
+
+		}
+		else
+		{
+			wf._ticks=0;
+		}
   /* USER CODE END SysTick_IRQn 1 */
 }
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *ERRUART)
 
+{
+	if(ERRUART->Instance==USART1)
+	{
+		 volatile int aore=0;
+		 volatile int bore=0;
+
+		// if ( UART_FLAG_ORE == HAL_UART_GetError(huart1))
+		//{
+		//Al leer los registros de esta forma SR y luego DR se resetean los errores de Framing Noise y Overrun FE NE ORE
+		//}
+			 wf._debug_count9++;
+			aore=ERRUART->Instance->SR;
+			bore=ERRUART->Instance->DR;
+
+
+		//HAL_UART_Transmit_IT(&huart5,"U4",strlen("U4"));
+		 HAL_UART_DeInit(ERRUART);
+		 MX_USART1_UART_Init();
+		 HAL_UART_Receive_IT(ERRUART,(uint8_t *)UART_RX_byte,1);
+	}
+	/*if(ERRUART->Instance==USART2)
+	{
+		 volatile int aore=0;
+		 volatile int bore=0;
+
+		// if ( UART_FLAG_ORE == HAL_UART_GetError(huart1))
+		//{
+		//Al leer los registros de esta forma SR y luego DR se resetean los errores de Framing Noise y Overrun FE NE ORE
+		//}
+			 wf._debug_count9++;
+			aore=ERRUART->Instance->SR;
+			bore=ERRUART->Instance->DR;
+
+
+		//HAL_UART_Transmit_IT(&huart5,"U4",strlen("U4"));
+		 HAL_UART_DeInit(ERRUART);
+		 MX_USART2_UART_Init();
+		 HAL_UART_Receive_IT(ERRUART,(uint8_t *)UART_RX_byte,1);
+	}*/
+}
+
+void HAL_TIM_ErrorCallback(TIM_HandleTypeDef *htim2)
+{
+
+		wf._debug_count10++;
+
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *INTSERIE)
+{
+
+// WiFi	USART 1 TIMER2
+	if(INTSERIE->Instance==USART1)
+		 {
+			UART_RX_vect[UART_RX_pos]=UART_RX_byte[0];
+			UART_RX_pos++;
+			if(UART_RX_pos>=512) UART_RX_pos=512;
+			HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_1);//HAL_TIM_Base_Start_IT(&htim7);	//Habilito el timer
+			TIM2->CNT=1;
+			EN_UART1_TMR=1;	//Habilito Timeout de software
+			HAL_UART_Receive_IT(INTSERIE,(uint8_t *)UART_RX_byte,1);
+		 }
+// LoRa USART2 TIMER3
+/*	if(INTSERIE->Instance==USART2)
+		 {
+			UART2_RX_vect[UART2_RX_pos]=UART2_RX_byte[0];
+			UART2_RX_pos++;
+			if(UART2_RX_pos>=512) UART2_RX_pos=512;
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, 1);
+			HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);//HAL_TIM_Base_Start_IT(&htim7);	//Habilito el timer
+			TIM3->CNT=1;
+			EN_UART2_TMR=1;	//Habilito Timeout de software
+			HAL_UART_Receive_IT(INTSERIE,(uint8_t *)UART2_RX_byte,1);
+		 }*/
+ }
+
+void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *TIMER)
+{
+// WiFi	USART 1 TIMER2
+		//void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
+		if(TIMER->Instance==TIM2)
+			{
+				 HAL_TIM_OC_Stop_IT(TIMER, TIM_CHANNEL_1); //Paro el timer
+				 FLAG_UART1=1;
+				 EN_UART1_TMR=0;
+				 UART_RX_items=UART_RX_pos;
+				 UART_RX_pos=0;
+				 UART_RX_vect[512]='\0'; //Finalizo el vector a la fuerza ya que recibo hasta 124
+				 CopiaVector(UART_RX_vect_hld,UART_RX_vect,UART_RX_items,1,CMP_VECT);
+				 HAL_UART_Receive_IT(&huart1,(uint8_t *)UART_RX_byte,1); //Habilito le recepcón de puerto serie al terminar
+				 if (wf._DBG_EN==1)
+				 {
+					 ITM0_Write((uint8_t *)UART_RX_vect_hld,UART_RX_items);
+				 }
+		}
+		// LoRa USART2 TIMER3
+		//void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
+	/*	if(TIMER->Instance==TIM3)
+			{
+				 HAL_TIM_OC_Stop_IT(TIMER, TIM_CHANNEL_1); //Paro el timer
+				 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, 0);
+				 FLAG_UART2=1;
+				 EN_UART2_TMR=0;
+				 UART2_RX_items=UART2_RX_pos;
+				 UART2_RX_pos=0;
+				 //UART2_RX_vect[UART2_RX_items]='\0'; //Finalizo el vector a la fuerza ya que recibo hasta 124
+				 UART2_RX_vect[512]='\0'; //Finalizo el vector a la fuerza ya que recibo hasta 124
+				 CopiaVector(lr.rxbuff,UART2_RX_vect,UART2_RX_items,1,CMP_VECT);
+				 lr.rxitems=UART2_RX_items;
+				 HAL_UART_Receive_IT(&huart2,(uint8_t *)UART2_RX_byte,1); //Habilito le recepcón de puerto serie al terminar
+				// ITM0_Write("\r\nRecepcion LoRa \r\n",strlen("Recepcion LoRa \r\n"));
+				 if (wf._DBG_EN==1)
+				 {
+					 ITM0_Write("\r\nData LoRa recibida = ",strlen("\r\nData LoRa recibida = "));
+					 ITM0_Write((uint8_t *)UART2_RX_vect,UART2_RX_items);
+					 ITM0_Write("\r\n",strlen("\r\n"));
+				 }
+		}*/
+}
+
+void ESP8266_HW_Reset(void)
+{
+	  ESP_REinit=0;
+	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+	  ITM0_Write("\r\n ESP HW Resetting\r\n",strlen("\r\n ESP HW Resetting\r\n"));
+	  HAL_Delay(2000);											//Tiempo de reset del módulo
+	  ITM0_Write("\r\n ESP ResetT\r\n",strlen("\r\n ESP ResetT\r\n"));
+	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);		//Habilito módulo
+}
+uint8_t ESP8266_HW_Init(UART_HandleTypeDef *SerialPort) //Devuelve 1 si reinició OK, y 0 si no
+{
+	  do{
+		  HAL_UART_Transmit(SerialPort, "AT+RESTORE\r\n",strlen("AT+RESTORE\r\n"),100);
+		  HAL_Delay(500);
+
+		  wf._n_fcomp=strlen("ready");
+		  wf._n_orig=UART_RX_items;
+
+		  while(FT_String_ND(UART_RX_vect_hld,&wf._n_orig,"ready",&wf._n_fcomp,wf._uartRCVD_tok,&wf._n_tok,&ntestc,&wf._id_conn,FIND)!=1)
+		  {
+			  	  wf._n_orig=UART_RX_items;
+			  	  if (ESP_ticks>=5000)
+			  		 {
+			  		 ESP_InitF=1;
+			  		 break;
+			  		 }
+		  }
+
+		  if(ESP_InitF==0)	//Si encontró la sentencia anterior analizo la siguiente
+		  {
+			  wf._n_fcomp=strlen("ready");
+			  wf._n_orig=UART_RX_items;
+			  while(FT_String_ND(UART_RX_vect_hld,&wf._n_orig,"ready",&wf._n_fcomp,wf._uartRCVD_tok,&wf._n_tok,&ntestc,&wf._id_conn,FIND)!=1)
+			  {
+				  wf._n_orig=UART_RX_items;
+				  if (ESP_ticks>=5000)
+					 {
+					 break;
+					 }
+			  }
+		  }
+
+		  if (ESP_ticks<5000)
+		  {
+			  ESP_REinit=10;
+			  ESP_ticks=0;
+		  }
+		  else
+		  {
+			  ESP_REinit++;
+			  ESP_ticks=0;
+		  }
+
+	  } while (ESP_REinit<=5);
+
+	  if(ESP_REinit==10)
+	  {
+		  return(1);
+	  }
+	  else
+	  {
+		  return(0);
+	  }
+}
+void BorrarVect(void)
+{
+	wf._uartRCVD[0]='\0';
+	wf._uartRCVD[1]='\0';
+	wf._n_orig=2;
+}
 
 
 

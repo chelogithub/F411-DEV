@@ -50,6 +50,9 @@
 									<listOptionValue builtIn="false" value="&quot;C:\STM32-IDE\STM32-LIBRARY\STRING&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\STM32-IDE\STM32-LIBRARY\ModBUS&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;C:\STM32-IDE\STM32-LIBRARY\STM32_ETH_W5500&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;C:\STM32-IDE\STM32-LIBRARY\HTTP&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;C:\STM32-IDE\STM32-LIBRARY\LoRa&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;C:\STM32-IDE\STM32-LIBRARY\ESP8266&quot;"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1998615057" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
@@ -76,11 +79,14 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ModBUS"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="STM32_ETH_W5500"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="LoRa"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="STRING"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ESP8266"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="HTTP"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
