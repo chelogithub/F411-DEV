@@ -74,7 +74,7 @@ char ENDPOINT[]="/tepelco",
      SERVER_IP[]="192.168.0.91",
      PORT[]="8000";
 
-uint8_t ETH_DBG_EN=1;
+uint8_t ETH_DBG_EN=0;
 uint8_t WF_SND_FLAG=0;
 int wf_snd_flag_ticks=0;
 
@@ -193,7 +193,6 @@ static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 uint8_t ESP8266_HW_Init(UART_HandleTypeDef *);
-void ESP8266_HW_Reset(void);
 void Actualizar_RXdata(int );
 void BorrarVect(void);
 /* USER CODE END PFP */
@@ -275,12 +274,7 @@ int main(void)
 		ETH.RST_PORT=GPIOB;
 		ETH.RST_PIN=GPIO_PIN_0;
 		ETH.SPI= &hspi1;
-
-		//----------------------- ETHERNET W5500 Environment-------------------------//
-	  //----------------------- LoRa ------------------------//
-
-	  //----------------------- LoRa ------------------------//
-
+	  //----------------------- ETHERNET W5500 Environment-------------------------//
 	  //----------------------- WIFI ------------------------//
  	  	Inicializar(&wf); 									//Borra todos los registros de la estructura
 		strcpy(wf._WF_Net, WIFI_NET);						//Nombre de la red WIFI  a conectar Fibertel WiFi967 2.4GHz
@@ -312,12 +306,8 @@ int main(void)
 		wf._estado_conexion=100;//Si no se define no arranca	//wf._estado_conexion=1;					//Arranco en WiFi Desconectado
 		wf._automatizacion=WF_CONNECT_TCP;//wf._automatizacion=WF_SEND;
 		wf._DBG_EN=1;
-
-
-
-		// ----------- FIN - Seteo de módulo Ethernet W5500 ----------- //
-
-
+		wf.RESET_PORT=GPIOA;
+		wf.RESET_PIN=GPIO_PIN_8;
 	 //----------------------- WIFI ------------------------//
 
 	 //---------------------- ModBUS -----------------------//
@@ -352,24 +342,23 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, 0);
-  ITM0_Write("\r\n INICIO OK\r\n",strlen("\r\n INICIO OK\r\n"));
-	  ESP8266_HW_Reset();	//WRNNG Hardcoded	  //Reseteo el modulo desde el pin de RESET
+  	  ITM0_Write("\r\n INICIO OK\r\n",strlen("\r\n INICIO OK\r\n"));
+	  HW_RESET(&wf);
+
 	  if (wf._DBG_EN) ITM0_Write("\r\n RESET ESP8266 \r\n",strlen("\r\n RESET ESP8266 \r\n"));
-	  //HAL_TIM_Base_Start(&htim6); //Timer como base de tiempo
 	  HAL_UART_Receive_IT(&huart1,(uint8_t *)UART_RX_byte,1);
 
-     if (ETH_DBG_EN)ITM0_Write("\r\n SET-UP W5500 \r\n",strlen("\r\n SET-UP W5500 \r\n"));
+	  if (ETH_DBG_EN)ITM0_Write("\r\n SET-UP W5500 \r\n",strlen("\r\n SET-UP W5500 \r\n"));
 
 
-     SPI_ETH_PHY_RESET(&ETH);
-     HAL_Delay(800);
-     eth_init(&ETH);
-     SPI_ETH_SNIFF(&ETH_SPY, &ETH);
-     HAL_Delay(800);
-   	 eth_socket_init(&ETH,S0_REG);
+      SPI_ETH_PHY_RESET(&ETH);
+      HAL_Delay(800);
+      eth_init(&ETH);
+      SPI_ETH_SNIFF(&ETH_SPY, &ETH);
+      HAL_Delay(800);
+   	  eth_socket_init(&ETH,S0_REG);
 
-   	 SPI_ETH_SNIFF(&ETH_SPY, &ETH);
+   	  SPI_ETH_SNIFF(&ETH_SPY, &ETH);
 
 	 uint16_t b=0;
 	 uint8_t spi_Data[2];
@@ -393,22 +382,23 @@ int main(void)
    	 //------------------------ RUN ESP -----------------------------------//
      if(ESP8266_HW_Init(&huart1)==1)
      {
-   	  ESP_HW_Init=1;
-   	  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+		  ESP_HW_Init=1;
+		  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
      }
      else
      {
-   	  ESP8266_HW_Reset(); //WRNNG Hardcoded
-   	  if(ESP8266_HW_Init(&huart1)==1)
-   	  {
-   		  ESP_HW_Init=1;
-   		  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
-   	  }
-   	  else
-   	  {
-   		  ESP_HW_Init=0;
-   		  if (wf._DBG_EN)  ITM0_Write("\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"));
-   	  }
+		 HW_RESET(&wf);
+		 ESP_REinit=0;
+			  if(ESP8266_HW_Init(&huart1)==1)
+				  {
+					  ESP_HW_Init=1;
+					  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+				  }
+				  else
+				  {
+					  ESP_HW_Init=0;
+					  if (wf._DBG_EN)  ITM0_Write("\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"));
+				  }
      }
      //------------------------ RUN ESP -----------------------------------//
 
@@ -451,6 +441,8 @@ int main(void)
 		  				ModBUS(&mb_wf);							// Create ModBUS info to be sent
 		  				CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
 		  				wf._n_D2SND=mb_wf._n_MBUS_2SND;*/
+		  				HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+		  				ITM0_Write("\r\n#RED#WF-SE GENERA INFO Y ENVIA\r\n",strlen("\r\n#RED#WF-SE GENERA INFO Y ENVIA\r\n"));
 
 		  				if( httpPOST(	ENDPOINT, SERVER_IP,PORT,
 		  								ModBUS_F03_Read(&mb_eth,0),
@@ -680,7 +672,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -809,10 +801,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(PCB_LED_GPIO_Port, PCB_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI1_NSS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, SPI1_NSS_Pin|WiFi_EN_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI_RST_GPIO_Port, SPI_RST_Pin, GPIO_PIN_SET);
@@ -824,18 +813,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(PCB_LED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : KEY_BTN_Pin WiFi_EN_Pin */
-  GPIO_InitStruct.Pin = KEY_BTN_Pin|WiFi_EN_Pin;
+  /*Configure GPIO pin : KEY_BTN_Pin */
+  GPIO_InitStruct.Pin = KEY_BTN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(KEY_BTN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA1 SPI1_NSS_Pin */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|SPI1_NSS_Pin;
+  /*Configure GPIO pin : SPI1_NSS_Pin */
+  GPIO_InitStruct.Pin = SPI1_NSS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(SPI1_NSS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SPI_RST_Pin */
   GPIO_InitStruct.Pin = SPI_RST_Pin;
@@ -843,6 +832,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(SPI_RST_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : WiFi_EN_Pin */
+  GPIO_InitStruct.Pin = WiFi_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(WiFi_EN_GPIO_Port, &GPIO_InitStruct);
 
 }
 
@@ -1324,8 +1320,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *INTSERIE)
 
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *TIMER)
 {
-// WiFi	USART 1 TIMER2
-		//void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
+
 		if(TIMER->Instance==TIM2)
 			{
 				 HAL_TIM_OC_Stop_IT(TIMER, TIM_CHANNEL_1); //Paro el timer
@@ -1366,15 +1361,6 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *TIMER)
 		}*/
 }
 
-void ESP8266_HW_Reset(void)
-{
-	  ESP_REinit=0;
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-	  ITM0_Write("\r\n ESP HW Resetting\r\n",strlen("\r\n ESP HW Resetting\r\n"));
-	  HAL_Delay(2000);											//Tiempo de reset del módulo
-	  ITM0_Write("\r\n ESP ResetT\r\n",strlen("\r\n ESP ResetT\r\n"));
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);		//Habilito módulo
-}
 uint8_t ESP8266_HW_Init(UART_HandleTypeDef *SerialPort) //Devuelve 1 si reinició OK, y 0 si no
 {
 	  do{
