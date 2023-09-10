@@ -340,9 +340,12 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
+
   /* USER CODE BEGIN 2 */
 
   	  ITM0_Write("\r\n INICIO OK\r\n",strlen("\r\n INICIO OK\r\n"));
+  	  HAL_UART_Transmit_IT(&huart2,"\r\nERROR UART 1\r\n",strlen("\r\nERROR UART 1\r\n"));
 	  HW_RESET(&wf);
 
 	  if (wf._DBG_EN) ITM0_Write("\r\n RESET ESP8266 \r\n",strlen("\r\n RESET ESP8266 \r\n"));
@@ -1257,7 +1260,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *ERRUART)
 			bore=ERRUART->Instance->DR;
 
 
-		//HAL_UART_Transmit_IT(&huart5,"U4",strlen("U4"));
+		 HAL_UART_Transmit_IT(&huart2,"\r\nERROR UART 1\r\n",strlen("\r\nERROR UART 1\r\n"));
 		 HAL_UART_DeInit(ERRUART);
 		 MX_USART1_UART_Init();
 		 HAL_UART_Receive_IT(ERRUART,(uint8_t *)UART_RX_byte,1);
